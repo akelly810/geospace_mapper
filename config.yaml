@@ -1,0 +1,4 @@
+years: "2001-2005"    # or "2003-2007"
+voxel: 0.5            # RE
+dt: 1.0               # minutes per sample (1 or 5 or 60)
+cores: 8
