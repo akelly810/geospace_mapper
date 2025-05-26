@@ -3,32 +3,38 @@ import argparse
 import pandas as pd
 
 from .config import GridSpec
-from .grmb import GRMBIntervals
-from .cluster import ClusterPositions
 from .voxel import Voxeliser
 from .plotter import VoxelPlotter
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--cef", required=True, type=Path)
-    p.add_argument("--pos", required=True, type=Path)
-    p.add_argument("--year", type=int, default=2001)
-    p.add_argument("--vox", type=float, default=0.5)
+
+def main() -> None:
+    p = argparse.ArgumentParser(
+        description="Voxelise and plot Cluster + GRMB Parquet dataset"
+    )
+    p.add_argument("--parquet", required=True, type=Path,
+                   help="File produced by match_gsm_grmb.py")
+    p.add_argument("--vox", type=float, default=0.5,
+                   help="Voxel edge length in RE (default 0.5)")
+    p.add_argument("--dt", type=float, default=1.0,
+                   help="Time step per sample in minutes (default 1)")
     args = p.parse_args()
 
+    # -------------------------------------------------- load + normalise
+    print(f"Reading {args.parquet}")
+    df = pd.read_parquet(args.parquet)
+
     grid = GridSpec(voxel=args.vox)
-    grmb = GRMBIntervals(args.cef, stop_before=pd.Timestamp(f"{args.year+1}-01-01T00:00:00Z"))
-    pos = ClusterPositions(args.pos)
-    pos.to_re(grid)
-    pos.df["region"] = grmb.label_series(pos.df["time"])
+    for ax in ("x", "y", "z"):
+        df[ax] /= grid.re_km        # km -> RE
 
-    pos.df.to_csv('pos.csv', index=False)
-
+    # -------------------------------------------------- voxelise
     vox = Voxeliser(grid)
-    vox.accumulate(pos.df)
+    vox.accumulate(df, dt_minutes=args.dt)
 
+    # -------------------------------------------------- visualise
     plot = VoxelPlotter(grid)
     plot.plot_regions_inout(vox.most_occupied())
+
 
 if __name__ == "__main__":
     main()
