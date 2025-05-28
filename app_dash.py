@@ -5,6 +5,7 @@ import numpy as np
 import dash, dash_bootstrap_components as dbc
 from dash import dcc, html, Input, Output, State
 import plotly.graph_objects as go
+import pandas as pd
 
 # ---------------------------------------------------------------------
 # LOAD DATA -----------------------------------------------------------
@@ -20,6 +21,15 @@ nx, ny, nz, R = P.shape
 x_cent = edges[0] + (np.arange(nx) + 0.5) * voxel
 y_cent = edges[0] + (np.arange(ny) + 0.5) * voxel
 z_cent = edges[0] + (np.arange(nz) + 0.5) * voxel
+
+# ---------------------------------------------------------------------
+# LOAD β-VOXEL DATA ---------------------------------------------------
+BETA_VOXFILE = Path("data/C3_beta_voxel_2005.npz")
+beta_data    = np.load(BETA_VOXFILE, allow_pickle=True)
+β_P          = beta_data["P"]           # (nx, ny, nz) β per cell
+β_edges      = beta_data["edges"]
+β_voxel      = float(beta_data["voxel"])
+β_cent = β_edges[:-1] + np.diff(β_edges)/2
 
 # ---------------------------------------------------------------------
 # COLOUR MAP ----------------------------------------------------------
@@ -61,6 +71,23 @@ def slice_cube(plane: str, idx: int) -> np.ndarray:
     if plane == "yz":
         return P[idx, :, :, :].transpose(1, 0, 2)   # (nz,ny,R)
     raise ValueError(plane)
+
+def slice_beta_cube(plane: str, idx: int) -> np.ndarray:
+    """
+    Return a 2D array of β for a given plane and index,
+    oriented so rows = Y/Z and cols = X/Y as with slice_cube.
+    """
+    if plane == "xy":
+        # Z = idx slice: β_P[:,:,idx] shape (nx,ny) → transpose to (ny,nx)
+        return β_P[:, :, idx].T
+    if plane == "xz":
+        # Y = idx slice: β_P[:,idx,:] shape (nx,nz) → transpose to (nz,nx)
+        return β_P[:, idx, :].T
+    if plane == "yz":
+        # X = idx slice: β_P[idx,:,:] shape (ny,nz) → transpose to (nz,ny)
+        return β_P[idx, :, :].T
+    raise ValueError(f"Unknown plane {plane!r}")
+
 
 # ---------------------------------------------------------------------
 # IMAGE (modal) -------------------------------------------------------
@@ -158,7 +185,8 @@ view_tabs = dcc.Tabs(
     id="view", value="slice",
     children=[
         dcc.Tab(label="Slice view",  value="slice"),
-        dcc.Tab(label="3-D volume",  value="vol")
+        dcc.Tab(label="3-D volume",  value="vol"),
+        dcc.Tab(label="Beta slice",     value="beta_slice"),
     ])
 
 app.layout = dbc.Container([
@@ -193,6 +221,43 @@ app.layout = dbc.Container([
 def refresh(plane, idx, region, view, iso_thr):
     max_int = max_index[plane]
     idx     = 0 if idx is None else min(idx, max_int)
+
+    if view == "beta_slice":
+        # compute slab coordinate
+        if plane=="xy":
+            slice_val = z_cent[idx]
+        elif plane=="xz":
+            slice_val = y_cent[idx]
+        else:
+            slice_val = x_cent[idx]
+
+        # get the 2D β matrix
+        β_mat = slice_beta_cube(plane, idx)
+
+        xpts, ypts = centers[plane]
+        finite     = np.isfinite(β_mat)
+        z_max      = np.nanpercentile(β_mat[finite], 95) if finite.any() else 1
+
+        figβ = go.Figure(go.Heatmap(
+            z=β_mat,
+            x=xpts,
+            y=ypts,
+            colorscale="Turbo",
+            zmin=0,
+            zmax=z_max,
+            colorbar=dict(title="β"),
+            hovertemplate="β=%{z:.2f}<br>" + axis_labels[plane][0] + "=%{x:.2f}<br>" + axis_labels[plane][1] + "=%{y:.2f}<extra></extra>"
+        ))
+        figβ.update_layout(
+            width=500, height=500,
+            xaxis=dict(title=axis_labels[plane][0]),
+            yaxis=dict(title=axis_labels[plane][1]),
+            margin=dict(l=40, r=40, t=40, b=40),
+            title=f"β slice — {plane.upper()} = {slice_val:.2f} Rₑ"
+        )
+
+        # hide the other two plots and disable controls
+        return figβ, go.Figure(), max_int, idx, {}, True
 
     cube    = slice_cube(plane, idx)
 
