@@ -1,0 +1,57 @@
+# -------------------------
+# Python basics
+# -------------------------
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.egg-info/
+
+# Jupyter/IPython
+*.ipynb_checkpoints
+.ipynb_checkpoints/
+
+# Logs
+*.log
+.snake*
+.snakemake/
+nohup.out
+
+# -------------------------
+# Snakemake pipeline output
+# -------------------------
+data/*.parquet
+data/*.csv
+data/*.npz
+data/*.txt
+data/.download_ok
+data/*_unpack_ok
+# Ignore all CSA-downloaded CEFs (HIA and FGM)
+data/C*/CSA_Download_*/C3_CP_*/**/*.cef
+data/C*/CSA_Download_*/C3_CP_*/**/*.cef.gz
+
+
+# Optional: exclude full data folder
+# /data/
+
+# -------------------------
+# Figures and images
+# -------------------------
+*.png
+*.pdf
+*.svg
+
+# -------------------------
+# VS Code
+# -------------------------
+.vscode/
+*.code-workspace
+
+# PyCharm / JetBrains
+.idea/
+
+# -------------------------
+# OS & Misc
+# -------------------------
+.DS_Store
+Thumbs.db

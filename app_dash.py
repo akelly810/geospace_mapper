@@ -23,13 +23,13 @@ y_cent = edges[0] + (np.arange(ny) + 0.5) * voxel
 z_cent = edges[0] + (np.arange(nz) + 0.5) * voxel
 
 # ---------------------------------------------------------------------
-# LOAD β-VOXEL DATA ---------------------------------------------------
+# LOAD beta-VOXEL DATA ---------------------------------------------------
 BETA_VOXFILE = Path("data/C3_beta_voxel_2005.npz")
 beta_data    = np.load(BETA_VOXFILE, allow_pickle=True)
-β_P          = beta_data["P"]           # (nx, ny, nz) β per cell
-β_edges      = beta_data["edges"]
-β_voxel      = float(beta_data["voxel"])
-β_cent = β_edges[:-1] + np.diff(β_edges)/2
+beta_P          = beta_data["P"]           # (nx, ny, nz) beta per cell
+beta_edges      = beta_data["edges"]
+beta_voxel      = float(beta_data["voxel"])
+beta_cent = beta_edges[:-1] + np.diff(beta_edges)/2
 
 # ---------------------------------------------------------------------
 # COLOUR MAP ----------------------------------------------------------
@@ -74,18 +74,18 @@ def slice_cube(plane: str, idx: int) -> np.ndarray:
 
 def slice_beta_cube(plane: str, idx: int) -> np.ndarray:
     """
-    Return a 2D array of β for a given plane and index,
+    Return a 2D array of beta for a given plane and index,
     oriented so rows = Y/Z and cols = X/Y as with slice_cube.
     """
     if plane == "xy":
-        # Z = idx slice: β_P[:,:,idx] shape (nx,ny) → transpose to (ny,nx)
-        return β_P[:, :, idx].T
+        # Z = idx slice: beta_P[:,:,idx] shape (nx,ny) → transpose to (ny,nx)
+        return beta_P[:, :, idx].T
     if plane == "xz":
-        # Y = idx slice: β_P[:,idx,:] shape (nx,nz) → transpose to (nz,nx)
-        return β_P[:, idx, :].T
+        # Y = idx slice: beta_P[:,idx,:] shape (nx,nz) → transpose to (nz,nx)
+        return beta_P[:, idx, :].T
     if plane == "yz":
-        # X = idx slice: β_P[idx,:,:] shape (ny,nz) → transpose to (nz,ny)
-        return β_P[idx, :, :].T
+        # X = idx slice: beta_P[idx,:,:] shape (ny,nz) → transpose to (nz,ny)
+        return beta_P[idx, :, :].T
     raise ValueError(f"Unknown plane {plane!r}")
 
 
@@ -155,9 +155,49 @@ def prob_figure(cube: np.ndarray, region: str,
     )
     return fig
 
+# --- helper to build the legend once --------------------------------
+def build_region_legend():
+    items = []
+    for lab in regions:                 # keep original order
+        swatch = html.Span(
+            style={
+                "display": "inline-block",
+                "width":   "1rem",
+                "height":  "1rem",
+                "backgroundColor": region_colors[lab],
+                "marginRight": "6px",
+                "border": "1px solid #333"  # thin outline so white shows up
+            }
+        )
+        items.append(
+            html.Div([swatch, lab],
+                     style={"fontSize": "0.8rem", "lineHeight": "1.2rem"})
+        )
+    return html.Div(items, id="region-legend",
+                    style={
+                        "columnCount": 2,    # 2-column wrap so it’s compact
+                        "gap": "4px",
+                        "marginTop": "6px"
+                    })
+
+def make_tick_map(mid_points, step_re=5):
+    """
+    Return two equal-length arrays - pixel indices and the labels to
+    show - such that only the voxels nearest to N·step_re R_E are kept.
+    """
+    wanted = np.arange(np.floor(mid_points.min()/step_re)*step_re,
+                       np.ceil (mid_points.max()/step_re)*step_re + step_re,
+                       step_re)
+    idx    = [np.abs(mid_points - w).argmin() for w in wanted]
+    labels = [f"{w:.0f}" for w in wanted]
+    return idx, labels
+
+
 # DASH APP ------------------------------------------------------------
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
 app.title = "Cluster GRMB Explorer"
+
+legend_block = build_region_legend()
 
 # --- CONTROLS ---
 plane_dd = dcc.Dropdown(
@@ -172,8 +212,19 @@ region_dd = dcc.Dropdown(id="region-dd",
                          value="OUT/MSH", clearable=False)
 
 # slice / iso slider (will be repurposed in 3-D view)
-slice_slider = dcc.Slider(id="slice-slider", min=0, max=max_index["xy"],
-                          step=1, value=0)
+slice_slider = dcc.Slider(
+    id="slice-slider",
+    min=0,
+    max=max_index["xy"],      # callback will overwrite for each plane
+    value=0,
+    step=1,                   # still snap to integers
+    marks=None,               # ← no tick-labels
+    dots=False,               # ← no step-dots  (rc-slider prop is exposed)
+    included=False,           # full-width coloured bar
+    updatemode="drag",        # live update while dragging
+    tooltip={"placement": "bottom", "always_visible": False},
+    className="w-100",        # bootstrap: take full col width
+)
 
 # probability threshold for isosurface
 iso_slider = dcc.Slider(id="iso", min=0.05, max=0.9, step=0.05,
@@ -192,7 +243,11 @@ view_tabs = dcc.Tabs(
 app.layout = dbc.Container([
     dbc.Row([view_tabs], className="mb-2"),
     dbc.Row([
-        dbc.Col(dcc.Graph(id="modal-graph"), md=6),
+        dbc.Col(dbc.Row([
+            dbc.Col(dcc.Graph(id="modal-graph", style={"height": "500px"}), width=10),
+            dbc.Col(legend_block, width=2,
+                style={"paddingLeft": "0", "paddingRight": "0"})
+        ]), md=6),
         dbc.Col(dcc.Graph(id="prob-graph"),  md=6),
     ]),
     dbc.Row([
@@ -231,15 +286,15 @@ def refresh(plane, idx, region, view, iso_thr):
         else:
             slice_val = x_cent[idx]
 
-        # get the 2D β matrix
-        β_mat = slice_beta_cube(plane, idx)
+        # get the 2D beta matrix
+        beta_mat = slice_beta_cube(plane, idx)
 
         xpts, ypts = centers[plane]
-        finite     = np.isfinite(β_mat)
-        z_max      = np.nanpercentile(β_mat[finite], 95) if finite.any() else 1
+        finite     = np.isfinite(beta_mat)
+        z_max      = np.nanpercentile(beta_mat[finite], 95) if finite.any() else 1
 
-        figβ = go.Figure(go.Heatmap(
-            z=β_mat,
+        figbeta = go.Figure(go.Heatmap(
+            z=beta_mat,
             x=xpts,
             y=ypts,
             colorscale="Turbo",
@@ -248,7 +303,7 @@ def refresh(plane, idx, region, view, iso_thr):
             colorbar=dict(title="β"),
             hovertemplate="β=%{z:.2f}<br>" + axis_labels[plane][0] + "=%{x:.2f}<br>" + axis_labels[plane][1] + "=%{y:.2f}<extra></extra>"
         ))
-        figβ.update_layout(
+        figbeta.update_layout(
             width=500, height=500,
             xaxis=dict(title=axis_labels[plane][0]),
             yaxis=dict(title=axis_labels[plane][1]),
@@ -257,7 +312,7 @@ def refresh(plane, idx, region, view, iso_thr):
         )
 
         # hide the other two plots and disable controls
-        return figβ, go.Figure(), max_int, idx, {}, True
+        return figbeta, go.Figure(), max_int, idx, {}, True
 
     cube    = slice_cube(plane, idx)
 
@@ -306,6 +361,14 @@ def refresh(plane, idx, region, view, iso_thr):
         margin=dict(l=40,r=40,t=40,b=40),
         title=f"Dominant region -- {slice_title}",
     )
+
+    xv, xt = make_tick_map(xpts, step_re=5)
+    yv, yt = make_tick_map(ypts, step_re=5)
+
+    modal.update_xaxes(tickmode="array", tickvals=xv, ticktext=xt,
+                       ticks="outside", ticklen=4, tickfont_size=10)
+    modal.update_yaxes(tickmode="array", tickvals=yv, ticktext=yt,
+                       ticks="outside", ticklen=4, tickfont_size=10)
 
     prob = prob_figure(cube, region, xpts, ypts,
                        xlab, ylab,
