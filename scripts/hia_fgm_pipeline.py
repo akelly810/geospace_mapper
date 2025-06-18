@@ -3,7 +3,7 @@
 Convert one calendar year of CIS-HIA and FGM CEF files into
 
     • C{N}_HIA_FGM_labelled_{YEAR}.csv   (time-matched, GRMB-labelled)
-    • C{N}_beta_cube_{YEAR}.parquet      (x,y,z,β,Region → ready for Dash)
+    • C{N}_beta_cube_{YEAR}.parquet      (x,y,z,beta,Region -> ready for Dash)
 
 Called by Snakemake or standalone (see Snakefile).
 """
@@ -68,13 +68,12 @@ def concat_folder(folder: Path, keep_pat: dict[str, str],
                 idx[k] = next(i for i, h in enumerate(headers)
                               if re.fullmatch(pat, h, flags=re.IGNORECASE))
             except StopIteration:
-                return None          # one header missing → reject this file set
+                return None          # one header missing -> reject this file set
         return idx
 
     # collect every *.cef* below folder (incl. sub-dirs)
     ceffiles = sorted(folder.rglob("*.cef"))
 
-    # ---------- choose a template file that really contains all headers -----
     hdrs, idx = None, None
     for f in ceffiles:
         cand = extract_headers_from_cef(f)
@@ -83,7 +82,7 @@ def concat_folder(folder: Path, keep_pat: dict[str, str],
             hdrs = cand
             break
     if hdrs is None:
-        raise RuntimeError(f"❌ {label}: no CEF in {folder} contains "
+        raise RuntimeError(f"{label}: no CEF in {folder} contains "
                            f"all required columns {list(keep_pat.values())}")
 
     keep_idx  = [idx[k] for k in keep_pat]   # preserve original order
@@ -99,7 +98,7 @@ def concat_folder(folder: Path, keep_pat: dict[str, str],
                 frames.append(df)
 
     if not frames:
-        raise RuntimeError(f"❌ {label}: no valid science CEFs in {folder}")
+        raise RuntimeError(f"{label}: no valid science CEFs in {folder}")
 
     comb = pd.concat(frames, ignore_index=True)
     comb.to_csv(out_csv, index=False)
@@ -187,23 +186,23 @@ def main() -> None:
     hia_csv = args.out / f"C{args.cluster}_HIA_combined_{args.year}.csv"
     fgm_csv = args.out / f"C{args.cluster}_FGM_combined_{args.year}.csv"
 
-    print("→ HIA   (extract & concat)")
+    print("-> HIA   (extract & concat)")
     hia = concat_folder(args.hia, NEEDED_HIA, "HIA", hia_csv)
 
-    print("→ FGM   (extract & concat)")
+    print("-> FGM   (extract & concat)")
     fgm = concat_folder(args.fgm, NEEDED_FGM, "FGM", fgm_csv)
 
-    print("→ time-matching HIA ⇄ FGM")
+    print("-> time-matching HIA ⇄ FGM")
     matched = match_nearest(hia, fgm)
 
-    print("→ GRMB label intervals")
+    print("-> GRMB label intervals")
     labels = parse_grmb(args.grmb, args.year)
 
-    print("→ apply labels")
+    print("-> apply labels")
     labelled = add_labels(matched, labels)
 
-    # ---------------------- compute β & positions ----------------------
-    print("→ compute plasma β & stream-write")
+    # ---------------------- compute beta & positions ----------------------
+    print("-> compute plasma beta & stream-write")
 
     # open CSV writer
     csv_out  = args.out / f"C{args.cluster}_HIA_FGM_labelled_{args.year}.csv"
@@ -216,7 +215,7 @@ def main() -> None:
         for i in range(0, len(labelled), chunksize):
             chunk = labelled.iloc[i:i+chunksize].copy()
 
-            # ---- compute β for the chunk (same formula, float32 down-cast) ----
+            # ---- compute beta for the chunk (same formula, float32 down-cast) ----
             n_cm3 = pd.to_numeric(chunk["Density"], errors="coerce", downcast="float")
             T_MK  = pd.to_numeric(chunk["Temperature"], errors="coerce", downcast="float")
             p_th  = n_cm3 * 1e6 * T_MK * 1e6 * 1.380649e-23
@@ -236,7 +235,7 @@ def main() -> None:
             chunk["beta"] = 2 * mu_0 * p_th / (B_T**2)
             chunk.dropna(subset=["beta"], inplace=True)
 
-            # --- add position in R_E and select β-cube columns -------------
+            # --- add position in R_E and select beta-cube columns -------------
             chunk["x"] = pd.to_numeric(chunk["Position in GSE_0"],
                                        errors="coerce",
                                        downcast="float") / 6371.0
@@ -260,8 +259,8 @@ def main() -> None:
 
         writer.close()
 
-    print(f"✓ wrote {csv_out}")
-    print(f"✓ wrote {cube_out}")
+    print(f"wrote {csv_out}")
+    print(f"wrote {cube_out}")
 
 if __name__ == "__main__":
     main()

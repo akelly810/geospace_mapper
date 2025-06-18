@@ -142,7 +142,7 @@ def main() -> None:
 
     if writer is not None:
         writer.close()
-        print(f"✓ Finished.  Total rows written: {total_rows:,}")
+        print(f"Finished.  Total rows written: {total_rows:,}")
         print(f"  File: {args.out.resolve()}")
     else:
         print("No data matched the time window; nothing written.")
