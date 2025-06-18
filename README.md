@@ -1,38 +1,47 @@
-## Download and Process Cluster Position Data
-Spacecraft orbit data can be pulled and processed uning the two included scripts:
-1. `gse_download.py`
-2. `convert_gse_to_gsm.py`
+# Quick-Start • Geospace Mapper
 
+Turn Cluster mission data + GRMB labels into 3-D voxel cubes and explore them with a Dash web-app.
 
-### 1. `gse_download.py` – Download Cluster Positions (GSE)
+---
 
-This script downloads position data for Cluster 1–4 from NASA SSCWeb in **GSE coordinates** (in kilometers) and saves each spacecraft's data as a separate `.txt` file.
+## 1  Install
+Configure your Python environment by installing the required packages.
+I don't know if the below will work immediately, but you can figure it out.
 
-#### Instructions:
-1. Open `gse_download.py`.
-2. Modify the `start` and `stop` date variables near the bottom of the script to define your desired time range.
-3. Specify `CADENCE_MIN` as the resolution in minutes (default 1 minute).
-4. Run the script:
-   ```bash
-   python gse_download.py
-   ```
+Option 1: Conda
+```bash
+conda create -n gmapper python=3.11 \
+    numpy pandas scipy pyarrow tqdm \
+    dash plotly dash-bootstrap-components \
+    snakemake spacepy -c conda-forge
+conda activate gmapper
+```
 
-Each `.txt` file will contain time-stamped position data, with columns:  
-`UTC_timestamp   X_GSE_km   Y_GSE_km   Z_GSE_km`.
+Option 2: pip + conda forge
+```bash
+python -m venv gm-env
+source gm-env/bin/activate   # Windows: gm-env\Scripts\activate
+pip install numpy pandas scipy pyarrow tqdm \
+            dash plotly dash-bootstrap-components snakemake
+conda install -c conda-forge spacepy   # SpacePy needs compiled libs
 
-### 2. `convert_gse_to_gsm.py` – Convert to GSM Coordinates
+```
 
-This script converts all GSE `.txt` files matching the pattern `cluster*.txt` into their **GSM coordinate** equivalents using the SpacePy library.
+## 2 Edit config.yaml
+Change years, voxel size, etc.
 
-#### Instructions:
-1. Place `convert_gse_to_gsm.py` in the same directory as the GSE `.txt` files generated in the previous step.
-2. Run the script:
-   ```bash
-   python convert_gse_to_gsm.py
-   ```
+## 3 Run the pipeline
+This produces the build artefacts and datacubes required for visualisation
+```bash
+snakemake -j 8
+```
 
-This will create new `.txt` files with `_gsm` appended to the filename (e.g., `cluster1_gsm.txt`), containing:
-`UTC_timestamp   X_GSM_km   Y_GSM_km   Z_GSM_km`.
+Outputs appear in data/:
+datacube_YYYY-YYYY.npz     # region probabilities
+C3_beta_voxel.npz          # plasma-β voxels (optional)
 
-## Main code
-...
+## 4 Launch the web app
+Region datacube is required, beta cube is optional
+```bash
+python app_dash.py
+```
